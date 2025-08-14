@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Reproductor de Video (carga local)</title>
+  <style>
+    :root { font-family: system-ui, Arial, sans-serif; }
+    body { margin: 0; background: #0f172a; color: #e2e8f0; display: grid; place-items: center; min-height: 100vh; }
+    .card { width: min(960px, 95vw); background: #111827; border: 1px solid #1f2937; border-radius: 14px; padding: 16px 16px 20px; box-shadow: 0 8px 30px rgba(0,0,0,.25); }
+    h1 { font-size: 1.1rem; margin: 0 0 12px; color: #93c5fd; }
+    .video-wrap { position: relative; background: #0b1020; border: 1px dashed #334155; border-radius: 12px; aspect-ratio: 16/9; display: grid; place-items: center; overflow: hidden; }
+    video { width: 100%; height: 100%; object-fit: contain; background: black; }
+    .dropzone { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; pointer-events: none; transition: .2s; }
+    .hint { opacity: .8; font-size: .95rem; }
+    .controls { display: grid; gap: 10px; grid-template-columns: 1fr; margin-top: 12px; }
+    .row { display: grid; gap: 8px; grid-template-columns: 1fr auto auto auto; align-items: center; }
+    input[type="file"], input[type="url"], button, label.toggle {
+      background: #0b1020; border: 1px solid #253044; color: #e5e7eb; border-radius: 10px; padding: 10px 12px; font-size: .95rem;
+    }
+    input[type="url"] { width: 100%; }
+    button { cursor: pointer; }
+    .bad { color: #fecaca; }
+    .ok { color: #bbf7d0; }
+    .small { font-size: .85rem; opacity: .8; }
+    label.toggle { display: inline-flex; gap: 8px; align-items: center; cursor: pointer; user-select: none; }
+    .chip { display:inline-block; padding:2px 8px; border:1px solid #334155; border-radius:999px; font-size:.8rem; opacity:.9; }
+    @media (max-width: 560px) {
+      .row { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Reproductor de Video — carga local o URL</h1>
+
+    <div id="videoWrap" class="video-wrap">
+      <video id="player" controls playsinline></video>
+      <div id="dz" class="dropzone">
+        <div class="hint">
+          Arrastra y suelta tu archivo aquí<br>
+          <span class="small">o usa el botón “Elegir video”</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <div class="row">
+        <input id="file" type="file" accept="video/*" />
+        <button id="clearBtn" title="Quitar video actual">Quitar</button>
+        <label class="toggle"><input id="autoplay" type="checkbox"> Autoplay</label>
+        <label class="toggle"><input id="loop" type="checkbox"> Loop</label>
+      </div>
+
+      <div class="row">
+        <input id="urlInput" type="url" placeholder="Opcional: pega una URL directa a un video (mp4, webm, m3u8*) y pulsa Cargar" />
+        <button id="loadUrlBtn">Cargar URL</button>
+        <span id="status" class="small chip">Sin video</span>
+      </div>
+
+      <div class="small">
+        Formatos comunes compatibles: MP4 (H.264/AAC), WebM (VP9/Opus). En iOS/macOS suele funcionar MP4/H.264.
+        <br>*HLS (m3u8) puede requerir navegador compatible.
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const player = document.getElementById('player');
+    const fileInput = document.getElementById('file');
+    const clearBtn = document.getElementById('clearBtn');
+    const autoplay = document.getElementById('autoplay');
+    const loop = document.getElementById('loop');
+    const urlInput = document.getElementById('urlInput');
+    const loadUrlBtn = document.getElementById('loadUrlBtn');
+    const status = document.getElementById('status');
+    const dz = document.getElementById('dz');
+    const wrap = document.getElementById('videoWrap');
+
+    let currentObjectUrl = null;
+
+    function setStatus(msg, ok = null) {
+      status.textContent = msg;
+      status.classList.toggle('ok', ok === true);
+      status.classList.toggle('bad', ok === false);
+    }
+
+    function revokeObjectUrl() {
+      if (currentObjectUrl) {
+        URL.revokeObjectURL(currentObjectUrl);
+        currentObjectUrl = null;
+      }
+    }
+
+    function loadFile(file) {
+      if (!file) return;
+      revokeObjectUrl();
+      const url = URL.createObjectURL(file);
+      currentObjectUrl = url;
+      player.src = url;
+      player.load();
+      if (autoplay.checked) player.play().catch(()=>{});
+      dz.style.display = 'none';
+      setStatus(`Cargado: ${file.name}`, true);
+    }
+
+    function loadUrl(url) {
+      revokeObjectUrl();
+      player.src = url;
+      player.load();
+      if (autoplay.checked) player.play().catch(()=>{});
+      dz.style.display = 'none';
+      setStatus(`URL cargada`, true);
+    }
+
+    // File input
+    fileInput.addEventListener('change', (e) => {
+      const file = e.target.files?.[0];
+      loadFile(file);
+    });
+
+    // Drag & drop
+    ;['dragenter','dragover'].forEach(ev =>
+      wrap.addEventListener(ev, (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; dz.style.opacity = 0.6; })
+    );
+    ;['dragleave','drop'].forEach(ev =>
+      wrap.addEventListener(ev, (e) => { e.preventDefault(); dz.style.opacity = 1; })
+    );
+    wrap.addEventListener('drop', (e) => {
+      const file = e.dataTransfer.files?.[0];
+      if (file && file.type.startsWith('video/')) {
+        loadFile(file);
+      } else {
+        setStatus('Suelta un archivo de video válido', false);
+      }
+    });
+
+    // Clear
+    clearBtn.addEventListener('click', () => {
+      revokeObjectUrl();
+      player.removeAttribute('src');
+      player.load();
+      fileInput.value = '';
+      dz.style.display = '';
+      setStatus('Sin video');
+    });
+
+    // URL
+    loadUrlBtn.addEventListener('click', () => {
+      const url = urlInput.value.trim();
+      if (!url) return setStatus('Ingresa una URL válida', false);
+      loadUrl(url);
+    });
+
+    // Toggles
+    autoplay.addEventListener('change', () => { player.autoplay = autoplay.checked; });
+    loop.addEventListener('change', () => { player.loop = loop.checked; });
+
+    // Errores del video
+    player.addEventListener('error', () => {
+      const code = player.error?.code;
+      setStatus(`Error al reproducir (código ${code || 'desconocido'})`, false);
+    });
+  </script>
+</body>
+</html>
